@@ -145,6 +145,7 @@ describe("PlannerShell flow", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/초안 생성 완료/)).toBeInTheDocument();
+      expect(screen.getByText("인터뷰 초안이 준비되었습니다. 아래 폼에서 숫자를 수정하세요.")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "저장하고 매수 가능 시점 계산" }));
@@ -153,5 +154,22 @@ describe("PlannerShell flow", () => {
       expect(screen.getAllByText("고양·부천").length).toBeGreaterThan(0);
       expect(screen.getByText(/AI 요약/)).toBeInTheDocument();
     });
+  });
+
+  it("blocks interview submission until Supabase auth is complete", () => {
+    render(
+      <PlannerShell
+        initialDashboard={buildDashboardFixture(false)}
+        sessionEmail=""
+        authConfigured={true}
+        authMode="supabase"
+        authenticated={false}
+      />,
+    );
+
+    expect(
+      screen.getByText("먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다음 질문" })).toBeDisabled();
   });
 });

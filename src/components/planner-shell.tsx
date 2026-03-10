@@ -132,6 +132,7 @@ export function PlannerShell({
   const [financialForm, setFinancialForm] = useState(defaultFinancialForm(initialDashboard.financialSnapshot));
   const [goalForm, setGoalForm] = useState(defaultGoalForm(initialDashboard.housingGoal));
   const [savePending, setSavePending] = useState(false);
+  const [interviewPending, setInterviewPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -148,6 +149,7 @@ export function PlannerShell({
   }, [dashboard.promotedMarkets, goalForm.preferredRegions]);
 
   const nextQuestion = interviewQuestions[currentQuestionIndex] ?? null;
+  const requiresAuth = authConfigured && !authenticated;
 
   async function refreshDashboard() {
     const response = await requestJson<{ dashboard: DashboardPayload }>("/api/dashboard");
@@ -196,10 +198,10 @@ export function PlannerShell({
     }
   }
 
-  async function handleInterviewSubmit() {
+  async function handleInterviewSubmit(answerMap: Record<string, string>) {
     const payloadAnswers: InterviewAnswer[] = interviewQuestions.map((question) => ({
       questionId: question.id,
-      answer: answers[question.id] ?? "",
+      answer: answerMap[question.id] ?? "",
     }));
     const response = await requestJson<{ draft: InterviewDraft }>("/api/onboarding/interview", {
       method: "POST",
@@ -209,6 +211,7 @@ export function PlannerShell({
     setDraft(response.draft);
     setFinancialForm(defaultFinancialForm(response.draft.financialSnapshot));
     setGoalForm(defaultGoalForm(response.draft.housingGoal));
+    setCurrentQuestionIndex(interviewQuestions.length);
   }
 
   function handleAnswerAdvance(event: React.FormEvent<HTMLFormElement>) {
@@ -217,17 +220,25 @@ export function PlannerShell({
       return;
     }
 
-    setAnswers((current) => ({
-      ...current,
-      [nextQuestion.id]: answerInput.trim(),
-    }));
+    const submittedAnswer = answerInput.trim();
+    const nextAnswers = {
+      ...answers,
+      [nextQuestion.id]: submittedAnswer,
+    };
+    setAnswers(nextAnswers);
     setAnswerInput("");
+    setError(null);
 
     if (currentQuestionIndex === interviewQuestions.length - 1) {
+      setInterviewPending(true);
       startTransition(() => {
-        void handleInterviewSubmit().catch((submitError) => {
-          setError(submitError instanceof Error ? submitError.message : "인터뷰 구조화에 실패했습니다.");
-        });
+        void handleInterviewSubmit(nextAnswers)
+          .catch((submitError) => {
+            setError(submitError instanceof Error ? submitError.message : "인터뷰 구조화에 실패했습니다.");
+          })
+          .finally(() => {
+            setInterviewPending(false);
+          });
       });
       return;
     }
@@ -421,6 +432,11 @@ export function PlannerShell({
                 {Math.min(answeredQuestions.length + 1, interviewQuestions.length)} / {interviewQuestions.length}
               </span>
             </div>
+            {requiresAuth ? (
+              <p className="notice-box">
+                먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다.
+              </p>
+            ) : null}
             <div className="chat-log">
               {answeredQuestions.map((question) => (
                 <div key={question.id} className="chat-pair">
@@ -449,9 +465,14 @@ export function PlannerShell({
                   value={answerInput}
                   onChange={(event) => setAnswerInput(event.target.value)}
                   placeholder={nextQuestion.placeholder}
+                  disabled={requiresAuth || interviewPending}
                 />
-                <button type="submit" disabled={!answerInput.trim()}>
-                  {currentQuestionIndex === interviewQuestions.length - 1 ? "구조화 초안 만들기" : "다음 질문"}
+                <button type="submit" disabled={!answerInput.trim() || requiresAuth || interviewPending}>
+                  {interviewPending
+                    ? "구조화 중..."
+                    : currentQuestionIndex === interviewQuestions.length - 1
+                      ? "구조화 초안 만들기"
+                      : "다음 질문"}
                 </button>
               </form>
             ) : (
@@ -620,7 +641,7 @@ export function PlannerShell({
             {draft ? <p className="draft-summary">{draft.summary}</p> : null}
             {error ? <p className="error-box">{error}</p> : null}
 
-            <button className="primary-button" onClick={handleSaveScenario} disabled={savePending}>
+            <button className="primary-button" onClick={handleSaveScenario} disabled={savePending || requiresAuth}>
               {savePending ? "계산 중..." : "저장하고 매수 가능 시점 계산"}
             </button>
           </article>
