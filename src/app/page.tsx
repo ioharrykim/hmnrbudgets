@@ -1,5 +1,5 @@
 import { PlannerShell } from "@/components/planner-shell";
-import { hasSupabaseBrowserConfig } from "@/lib/env";
+import { getConfiguredAuthMode } from "@/lib/env";
 import { getPageDashboardContext } from "@/lib/household-session";
 
 export default async function HomePage() {
@@ -9,7 +9,7 @@ export default async function HomePage() {
     <PlannerShell
       initialDashboard={dashboard}
       sessionEmail={session.email}
-      authConfigured={hasSupabaseBrowserConfig()}
+      authConfigured={getConfiguredAuthMode() !== "demo"}
       authMode={session.authMode}
       authenticated={session.authenticated}
     />

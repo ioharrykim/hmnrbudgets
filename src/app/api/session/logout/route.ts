@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { DEMO_SESSION_COOKIE } from "@/lib/constants";
+import { PIN_SESSION_COOKIE } from "@/lib/pin-auth";
 import { createSupabaseRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 export async function POST(request: NextRequest) {
@@ -11,6 +12,10 @@ export async function POST(request: NextRequest) {
   }
 
   response.cookies.set(DEMO_SESSION_COOKIE, "", {
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set(PIN_SESSION_COOKIE, "", {
     path: "/",
     maxAge: 0,
   });

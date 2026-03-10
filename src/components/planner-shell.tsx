@@ -21,7 +21,7 @@ type PlannerShellProps = {
   initialDashboard: DashboardPayload;
   sessionEmail: string;
   authConfigured: boolean;
-  authMode: "demo" | "supabase";
+  authMode: "demo" | "supabase" | "pin";
   authenticated: boolean;
 };
 
@@ -122,6 +122,7 @@ export function PlannerShell({
 }: PlannerShellProps) {
   const router = useRouter();
   const [email, setEmail] = useState(sessionEmail);
+  const [pin, setPin] = useState("");
   const [loginPending, setLoginPending] = useState(false);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState(initialDashboard);
@@ -150,6 +151,10 @@ export function PlannerShell({
 
   const nextQuestion = interviewQuestions[currentQuestionIndex] ?? null;
   const requiresAuth = authConfigured && !authenticated;
+  const authRequirementCopy =
+    authMode === "pin"
+      ? "먼저 Step 1에서 이메일과 4자리 코드로 인증해야 인터뷰 초안을 저장할 수 있습니다."
+      : "먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다.";
 
   async function refreshDashboard() {
     const response = await requestJson<{ dashboard: DashboardPayload }>("/api/dashboard");
@@ -163,10 +168,15 @@ export function PlannerShell({
     setSessionNotice(null);
 
     try {
-      const path = authConfigured ? "/api/session/magic-link" : "/api/session/demo";
+      const path =
+        authMode === "pin"
+          ? "/api/session/pin-login"
+          : authMode === "supabase"
+            ? "/api/session/magic-link"
+            : "/api/session/demo";
       await requestJson(path, {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(authMode === "pin" ? { email, pin } : { email }),
       });
 
       if (path === "/api/session/magic-link") {
@@ -385,7 +395,7 @@ export function PlannerShell({
                 <h2>이메일 세션</h2>
               </div>
               <span className="demo-badge">
-                {authConfigured ? "Supabase magic link" : "Demo email session"}
+                {authMode === "pin" ? "4-digit access code" : authMode === "supabase" ? "Supabase magic link" : "Demo email session"}
               </span>
             </div>
             <form className="session-form" onSubmit={handleSessionLogin}>
@@ -398,22 +408,46 @@ export function PlannerShell({
                   placeholder="you@example.com"
                 />
               </label>
+              {authMode === "pin" ? (
+                <label>
+                  4자리 코드
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    maxLength={4}
+                    value={pin}
+                    onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="1234"
+                  />
+                </label>
+              ) : null}
               {authConfigured && authenticated && authMode === "supabase" ? (
                 <button type="button" disabled={loginPending} onClick={handleLogout}>
                   {loginPending ? "로그아웃 중..." : "로그아웃"}
                 </button>
+              ) : authConfigured && authenticated && authMode === "pin" ? (
+                <button type="button" disabled={loginPending} onClick={handleLogout}>
+                  {loginPending ? "세션 종료 중..." : "세션 종료"}
+                </button>
               ) : (
-                <button type="submit" disabled={loginPending}>
+                <button type="submit" disabled={loginPending || (authMode === "pin" && pin.length !== 4)}>
                   {loginPending
                     ? "세션 연결 중..."
-                    : authConfigured
+                    : authMode === "pin"
+                      ? "코드 확인"
+                      : authConfigured
                       ? "로그인 링크 보내기"
                       : "이 이메일로 시작"}
                 </button>
               )}
             </form>
             <p className="session-copy">
-              {authConfigured
+              {authMode === "pin"
+                ? authenticated
+                  ? `${email} 계정으로 4자리 코드 인증이 완료되었습니다. 이후 데이터는 같은 이메일 household에 저장됩니다.`
+                  : "이메일과 4자리 접근코드를 입력하면 바로 세션이 열리고, 데이터는 서버에 저장됩니다."
+                : authConfigured
                 ? authenticated && authMode === "supabase"
                   ? `${email} 계정으로 인증되었습니다. 저장 데이터는 Supabase household에 연결됩니다.`
                   : "Supabase가 설정돼 있으면 이메일 magic link로 로그인하고, 서버는 해당 계정 이메일로 household를 불러옵니다."
@@ -433,9 +467,7 @@ export function PlannerShell({
               </span>
             </div>
             {requiresAuth ? (
-              <p className="notice-box">
-                먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다.
-              </p>
+              <p className="notice-box">{authRequirementCopy}</p>
             ) : null}
             <div className="chat-log">
               {answeredQuestions.map((question) => (

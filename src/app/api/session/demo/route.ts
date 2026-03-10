@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { DEMO_SESSION_COOKIE } from "@/lib/constants";
-import { hasSupabaseBrowserConfig } from "@/lib/env";
+import { getConfiguredAuthMode } from "@/lib/env";
 import { getRepository } from "@/lib/storage";
 import { sessionSchema } from "@/lib/validation";
 
 export async function POST(request: Request) {
-  if (hasSupabaseBrowserConfig()) {
+  if (getConfiguredAuthMode() !== "demo") {
     return NextResponse.json(
-      { error: "Supabase 인증이 설정된 환경에서는 demo 세션을 사용할 수 없습니다." },
+      { error: "현재 환경에서는 demo 세션을 사용할 수 없습니다." },
       { status: 403 },
     );
   }

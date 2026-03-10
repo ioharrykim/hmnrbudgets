@@ -4,6 +4,7 @@ export const DEFAULT_DATE = "2026-03-10";
 export const DEFAULT_HOUSEHOLD_NAME = "현민 · 누리";
 export const DEFAULT_HOUSEHOLD_EMAIL = "hmnr@example.com";
 export const DEMO_SESSION_COOKIE = "hmnr-demo-session";
+export const PIN_SESSION_COOKIE = "hmnr-access-session";
 
 export const INTERVIEW_HINTS = [
   "금액은 `450만원`, `1.8억`, `320000000` 형식 모두 입력 가능합니다.",

@@ -11,13 +11,19 @@ import { promotedMarketSnapshots } from "@/lib/market/market-seed";
 import { basePolicySnapshot } from "@/lib/policy/policy-seed";
 import { buildDashboardFixture, buildFinancialSnapshotFixture, buildHousingGoalFixture } from "@/test/fixtures";
 
+const mockRefresh = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    refresh: vi.fn(),
+    refresh: mockRefresh,
   }),
 }));
 
 describe("PlannerShell flow", () => {
+  beforeEach(() => {
+    mockRefresh.mockReset();
+  });
+
   it("walks through interview, saves the draft, and shows dashboard results", async () => {
     const householdId = "household_fixture";
     const initialDashboard = buildDashboardFixture(false);
@@ -171,5 +177,64 @@ describe("PlannerShell flow", () => {
       screen.getByText("먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "다음 질문" })).toBeDisabled();
+  });
+
+  it("blocks interview submission until 4-digit code auth is complete", () => {
+    render(
+      <PlannerShell
+        initialDashboard={buildDashboardFixture(false)}
+        sessionEmail=""
+        authConfigured={true}
+        authMode="pin"
+        authenticated={false}
+      />,
+    );
+
+    expect(
+      screen.getByText("먼저 Step 1에서 이메일과 4자리 코드로 인증해야 인터뷰 초안을 저장할 수 있습니다."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다음 질문" })).toBeDisabled();
+  });
+
+  it("submits email and 4-digit code, then refreshes the session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ household: { id: "household_fixture" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(
+      <PlannerShell
+        initialDashboard={buildDashboardFixture(false)}
+        sessionEmail=""
+        authConfigured={true}
+        authMode="pin"
+        authenticated={false}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("이메일"), "hmnr@example.com");
+    const pinInput = screen.getByLabelText("4자리 코드");
+    expect(screen.getByRole("button", { name: "코드 확인" })).toBeDisabled();
+
+    await user.type(pinInput, "12a34");
+
+    expect(pinInput).toHaveValue("1234");
+    await user.click(screen.getByRole("button", { name: "코드 확인" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/session/pin-login",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: "hmnr@example.com", pin: "1234" }),
+        }),
+      );
+      expect(mockRefresh).toHaveBeenCalled();
+    });
   });
 });

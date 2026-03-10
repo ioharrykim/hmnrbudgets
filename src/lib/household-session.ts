@@ -1,4 +1,4 @@
-import { hasSupabaseBrowserConfig } from "@/lib/env";
+import { getConfiguredAuthMode } from "@/lib/env";
 import { createPublicDashboard } from "@/lib/public-dashboard";
 import { getSessionContext } from "@/lib/session";
 import { getRepository } from "@/lib/storage";
@@ -11,8 +11,9 @@ export class UnauthorizedSessionError extends Error {
 
 export async function requireHouseholdSession() {
   const session = await getSessionContext();
+  const authMode = getConfiguredAuthMode();
 
-  if (hasSupabaseBrowserConfig() && !session.authenticated) {
+  if (authMode !== "demo" && !session.authenticated) {
     throw new UnauthorizedSessionError();
   }
 
@@ -32,8 +33,9 @@ export async function requireHouseholdSession() {
 
 export async function getPageDashboardContext() {
   const session = await getSessionContext();
+  const authMode = getConfiguredAuthMode();
 
-  if (hasSupabaseBrowserConfig() && !session.authenticated) {
+  if (authMode !== "demo" && !session.authenticated) {
     return {
       session,
       dashboard: createPublicDashboard(session.email),

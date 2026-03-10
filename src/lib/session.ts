@@ -1,18 +1,33 @@
 import { cookies } from "next/headers";
 
 import { DEFAULT_HOUSEHOLD_EMAIL, DEMO_SESSION_COOKIE } from "@/lib/constants";
-import { hasSupabaseBrowserConfig } from "@/lib/env";
+import { getConfiguredAuthMode } from "@/lib/env";
+import { verifyPinSessionValue, PIN_SESSION_COOKIE } from "@/lib/pin-auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface SessionContext {
   email: string;
-  authMode: "demo" | "supabase";
+  authMode: "demo" | "supabase" | "pin";
   authenticated: boolean;
   authUserId?: string;
 }
 
 export async function getSessionContext(): Promise<SessionContext> {
-  if (hasSupabaseBrowserConfig()) {
+  const authMode = getConfiguredAuthMode();
+
+  if (authMode === "pin") {
+    const store = await cookies();
+    const sessionCookie = store.get(PIN_SESSION_COOKIE)?.value;
+    const payload = sessionCookie ? verifyPinSessionValue(sessionCookie) : null;
+
+    return {
+      email: payload?.email ?? "",
+      authMode: "pin",
+      authenticated: Boolean(payload?.email),
+    };
+  }
+
+  if (authMode === "supabase") {
     const supabase = await createSupabaseServerClient();
     if (supabase) {
       const {

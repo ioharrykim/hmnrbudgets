@@ -16,6 +16,8 @@ npm run dev
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `HOUSEHOLD_ACCESS_PIN`
+- `SESSION_SIGNING_SECRET`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `OPEN_DATA_API_KEY`
@@ -23,6 +25,8 @@ npm run dev
 
 값이 없으면 앱은 demo cookie + in-memory 저장소로 동작합니다. Supabase 값을 넣으면 Postgres 저장소를 사용합니다.
 `OPEN_DATA_API_KEY`를 넣으면 `국토교통부 아파트매매 실거래 상세자료 OpenAPI` 기준으로 시장 밴드를 새로 계산합니다.
+`HOUSEHOLD_ACCESS_PIN`과 `SESSION_SIGNING_SECRET`을 넣으면 매직링크 대신 `이메일 + 4자리 코드` 인증을 우선 사용합니다.
+운영에서는 Vercel에 예를 들어 `HOUSEHOLD_ACCESS_PIN=1234`, `SESSION_SIGNING_SECRET=<32자 이상 랜덤 문자열>`을 넣으면 됩니다.
 
 ## 포함된 기능
 
@@ -36,6 +40,7 @@ npm run dev
 - `언제 살 수 있나 / 얼마가 필요하나 / 어떻게 준비하나` 대시보드
 - OpenAI 기반 AI 설명 레이어와 템플릿 fallback
 - Supabase magic link 인증 경로 (`/auth/callback`)
+- 이메일 + 4자리 코드 인증 경로 (`/api/session/pin-login`)
 - `OPEN_DATA_API_KEY` 기반 실거래 refresh 파이프라인
 
 ## 배치 스크립트

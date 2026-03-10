@@ -4,6 +4,10 @@ export const sessionSchema = z.object({
   email: z.string().email(),
 });
 
+export const pinLoginSchema = sessionSchema.extend({
+  pin: z.string().regex(/^\d{4}$/),
+});
+
 export const interviewAnswerSchema = z.object({
   questionId: z.string(),
   answer: z.string(),
