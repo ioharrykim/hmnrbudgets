@@ -160,6 +160,7 @@ describe("PlannerShell flow", () => {
     await waitFor(() => {
       expect(screen.getAllByText("고양·부천").length).toBeGreaterThan(0);
       expect(screen.getByText(/AI 요약/)).toBeInTheDocument();
+      expect(screen.getByText("계산 결과를 업데이트했습니다. 오른쪽 대시보드를 확인하세요.")).toBeInTheDocument();
     });
   });
 

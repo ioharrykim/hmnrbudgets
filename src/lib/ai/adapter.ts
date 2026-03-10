@@ -5,6 +5,8 @@ import { z } from "zod";
 import { formatCompactKrw, formatMonths } from "@/lib/format";
 import type { AiInsight, AffordabilityRun, FinancialSnapshot, HousingGoal, MarketSnapshot, PolicySnapshot } from "@/lib/types";
 
+const OPENAI_REQUEST_TIMEOUT_MS = 8_000;
+
 const aiInsightSchema = z.object({
   summary: z.string(),
   risks: z.array(z.string()).min(3).max(5),
@@ -58,7 +60,11 @@ function getOpenAIClient() {
     return null;
   }
 
-  return new OpenAI({ apiKey });
+  return new OpenAI({
+    apiKey,
+    timeout: OPENAI_REQUEST_TIMEOUT_MS,
+    maxRetries: 0,
+  });
 }
 
 export async function generateAiInsight(params: {
@@ -82,6 +88,7 @@ export async function generateAiInsight(params: {
   try {
     const response = await client.responses.parse({
       model: process.env.OPENAI_MODEL ?? "gpt-5-mini",
+      timeout: OPENAI_REQUEST_TIMEOUT_MS,
       reasoning: { effort: "low" },
       input: [
         {

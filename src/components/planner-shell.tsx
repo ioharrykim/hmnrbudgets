@@ -135,6 +135,7 @@ export function PlannerShell({
   const [savePending, setSavePending] = useState(false);
   const [interviewPending, setInterviewPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setDashboard(initialDashboard);
@@ -285,6 +286,7 @@ export function PlannerShell({
 
     setSavePending(true);
     setError(null);
+    setSaveNotice(null);
 
     const householdId = dashboard.household.id;
     const financialSnapshot: FinancialSnapshot = {
@@ -354,6 +356,7 @@ export function PlannerShell({
         body: JSON.stringify({}),
       });
       await refreshDashboard();
+      setSaveNotice("계산 결과를 업데이트했습니다. 오른쪽 대시보드를 확인하세요.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "계산 실행에 실패했습니다.");
     } finally {
@@ -679,6 +682,7 @@ export function PlannerShell({
             </div>
 
             {draft ? <p className="draft-summary">{draft.summary}</p> : null}
+            {saveNotice ? <p className="notice-box">{saveNotice}</p> : null}
             {error ? <p className="error-box">{error}</p> : null}
 
             <button className="primary-button" onClick={handleSaveScenario} disabled={savePending || requiresAuth}>
