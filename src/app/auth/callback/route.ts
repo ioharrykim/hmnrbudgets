@@ -1,24 +1,25 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseRouteHandlerClient } from "@/lib/supabase/route-handler";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
   const next = searchParams.get("next") ?? "/";
   const redirectTo = new URL(next, origin);
-  const supabase = await createSupabaseServerClient();
+  const response = NextResponse.redirect(redirectTo);
+  const supabase = createSupabaseRouteHandlerClient(request, response);
 
   if (!supabase) {
-    return NextResponse.redirect(redirectTo);
+    return response;
   }
 
   if (code) {
     await supabase.auth.exchangeCodeForSession(code);
-    return NextResponse.redirect(redirectTo);
+    return response;
   }
 
   if (tokenHash && type) {
@@ -28,5 +29,5 @@ export async function GET(request: Request) {
     });
   }
 
-  return NextResponse.redirect(redirectTo);
+  return response;
 }
