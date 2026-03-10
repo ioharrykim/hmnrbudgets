@@ -137,6 +137,14 @@ export function PlannerShell({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setDashboard(initialDashboard);
+  }, [initialDashboard]);
+
+  useEffect(() => {
+    setEmail(sessionEmail);
+  }, [sessionEmail]);
+
+  useEffect(() => {
     setFinancialForm(defaultFinancialForm(dashboard.financialSnapshot));
     setGoalForm(defaultGoalForm(dashboard.housingGoal));
   }, [dashboard]);
