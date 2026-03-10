@@ -27,6 +27,14 @@ export async function GET() {
       );
     }
 
-    throw error;
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "대시보드 조회 중 오류가 발생했습니다.",
+        dashboard: createPublicDashboard(),
+        officialSourceLinks: OFFICIAL_SOURCE_LINKS,
+        authenticated: false,
+      },
+      { status: 500 },
+    );
   }
 }

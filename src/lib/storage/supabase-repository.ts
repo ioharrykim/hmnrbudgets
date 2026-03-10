@@ -33,6 +33,18 @@ function createSupabaseAdminClient(): SupabaseClient {
   });
 }
 
+function formatSupabaseErrorMessage(
+  context: string,
+  error: { message: string; details?: string | null; hint?: string | null } | null,
+) {
+  if (!error) {
+    return;
+  }
+
+  const detailParts = [error.message, error.details, error.hint].filter(Boolean);
+  throw new Error(`${context}: ${detailParts.join(" / ")}`);
+}
+
 function mapHousehold(record: Record<string, unknown>): Household {
   return {
     id: String(record.id),
@@ -152,20 +164,22 @@ export class SupabaseRepository implements PersistenceRepository {
     let existing: Record<string, unknown> | null = null;
 
     if (authUserId) {
-      const { data } = await this.client
+      const { data, error } = await this.client
         .from("households")
         .select("*")
         .eq("auth_user_id", authUserId)
         .maybeSingle();
+      formatSupabaseErrorMessage("household 조회(auth_user_id)", error);
       existing = data;
     }
 
     if (!existing) {
-      const { data } = await this.client
+      const { data, error } = await this.client
         .from("households")
         .select("*")
         .eq("email", normalizedEmail)
         .maybeSingle();
+      formatSupabaseErrorMessage("household 조회(email)", error);
       existing = data;
     }
 
@@ -181,13 +195,14 @@ export class SupabaseRepository implements PersistenceRepository {
           authUserId,
           updatedAt: nowIso(),
         };
-        await this.client
+        const { error } = await this.client
           .from("households")
           .update({
             auth_user_id: updated.authUserId,
             updated_at: updated.updatedAt,
           })
           .eq("id", updated.id);
+        formatSupabaseErrorMessage("household auth_user_id 갱신", error);
         return updated;
       }
 
@@ -207,7 +222,7 @@ export class SupabaseRepository implements PersistenceRepository {
       audienceMode: "household-first",
     };
 
-    await this.client.from("households").insert({
+    const { error } = await this.client.from("households").insert({
       id: household.id,
       email: household.email,
       auth_user_id: household.authUserId ?? null,
@@ -219,28 +234,31 @@ export class SupabaseRepository implements PersistenceRepository {
       target_market_area: household.targetMarketArea,
       audience_mode: household.audienceMode,
     });
+    formatSupabaseErrorMessage("household 생성", error);
     return household;
   }
 
   async getHouseholdById(householdId: string) {
-    const { data } = await this.client.from("households").select("*").eq("id", householdId).maybeSingle();
+    const { data, error } = await this.client.from("households").select("*").eq("id", householdId).maybeSingle();
+    formatSupabaseErrorMessage("household 단건 조회", error);
     return data ? mapHousehold(data) : null;
   }
 
   async getLatestFinancialSnapshot(householdId: string) {
-    const { data } = await this.client
+    const { data, error } = await this.client
       .from("financial_snapshots")
       .select("*")
       .eq("household_id", householdId)
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    formatSupabaseErrorMessage("financial snapshot 조회", error);
 
     return data ? mapFinancialSnapshot(data) : null;
   }
 
   async upsertFinancialSnapshot(snapshot: FinancialSnapshot) {
-    await this.client.from("financial_snapshots").upsert({
+    const { error } = await this.client.from("financial_snapshots").upsert({
       id: snapshot.id,
       household_id: snapshot.householdId,
       captured_at: snapshot.capturedAt,
@@ -257,24 +275,26 @@ export class SupabaseRepository implements PersistenceRepository {
       expected_annual_bonus: snapshot.expectedAnnualBonus,
       notes: snapshot.notes ?? null,
     });
+    formatSupabaseErrorMessage("financial snapshot 저장", error);
 
     return snapshot;
   }
 
   async getHousingGoal(householdId: string) {
-    const { data } = await this.client
+    const { data, error } = await this.client
       .from("housing_goals")
       .select("*")
       .eq("household_id", householdId)
       .order("captured_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    formatSupabaseErrorMessage("housing goal 조회", error);
 
     return data ? mapHousingGoal(data) : null;
   }
 
   async upsertHousingGoal(goal: HousingGoal) {
-    await this.client.from("housing_goals").upsert({
+    const { error } = await this.client.from("housing_goals").upsert({
       id: goal.id,
       household_id: goal.householdId,
       captured_at: goal.capturedAt,
@@ -285,24 +305,26 @@ export class SupabaseRepository implements PersistenceRepository {
       priorities: goal.priorities,
       notes: goal.notes ?? null,
     });
+    formatSupabaseErrorMessage("housing goal 저장", error);
 
     return goal;
   }
 
   async getLatestRun(householdId: string) {
-    const { data } = await this.client
+    const { data, error } = await this.client
       .from("affordability_runs")
       .select("*")
       .eq("household_id", householdId)
       .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    formatSupabaseErrorMessage("affordability run 조회", error);
 
     return data ? mapRun(data) : null;
   }
 
   async saveAffordabilityRun(run: AffordabilityRun) {
-    await this.client.from("affordability_runs").upsert({
+    const { error } = await this.client.from("affordability_runs").upsert({
       id: run.id,
       household_id: run.householdId,
       computed_at: run.computedAt,
@@ -320,28 +342,31 @@ export class SupabaseRepository implements PersistenceRepository {
       ai_insight: run.aiInsight,
       source_records: run.sourceRecords,
     });
+    formatSupabaseErrorMessage("affordability run 저장", error);
 
     return run;
   }
 
   async getPromotedPolicySnapshot() {
-    const { data } = await this.client
+    const { data, error } = await this.client
       .from("policy_snapshots")
       .select("*")
       .eq("review_status", "promoted")
       .order("published_date", { ascending: false })
       .limit(1)
       .maybeSingle();
+    formatSupabaseErrorMessage("policy snapshot 조회", error);
 
     return data ? mapPolicySnapshot(data) : basePolicySnapshot;
   }
 
   async getPromotedMarketSnapshots() {
-    const { data } = await this.client
+    const { data, error } = await this.client
       .from("market_snapshots")
       .select("*")
       .eq("review_status", "promoted")
       .order("price_band_mid", { ascending: true });
+    formatSupabaseErrorMessage("market snapshot 조회", error);
 
     return data && data.length > 0 ? data.map((record) => mapMarketSnapshot(record)) : promotedMarketSnapshots;
   }

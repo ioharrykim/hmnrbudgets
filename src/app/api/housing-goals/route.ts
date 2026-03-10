@@ -25,6 +25,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    throw error;
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "주거 목표 저장 중 오류가 발생했습니다." },
+      { status: 500 },
+    );
   }
 }

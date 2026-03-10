@@ -21,6 +21,9 @@ export async function POST() {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    throw error;
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "매수 가능 시점 계산 중 오류가 발생했습니다." },
+      { status: 500 },
+    );
   }
 }
