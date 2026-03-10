@@ -49,6 +49,16 @@ type GoalFormState = {
   priorities: string;
 };
 
+type PersistedFormState = {
+  version: 1;
+  updatedAt: string;
+  financialForm: FinancialFormState;
+  goalForm: GoalFormState;
+  draft: InterviewDraft | null;
+};
+
+const FORM_STORAGE_PREFIX = "hmnr-planner-form";
+
 function defaultFinancialForm(snapshot: FinancialSnapshot | null): FinancialFormState {
   const hyunmin = snapshot?.members[0];
   const nuri = snapshot?.members[1];
@@ -77,6 +87,56 @@ function defaultGoalForm(goal: HousingGoal | null): GoalFormState {
     minimumExclusiveAreaM2: goal?.minimumExclusiveAreaM2 ?? 59,
     priorities: goal?.priorities.join(", ") ?? "현금흐름 안정, 출퇴근 균형, 3~5년 내 매수",
   };
+}
+
+function getFormStorageKey(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  return normalizedEmail ? `${FORM_STORAGE_PREFIX}:${normalizedEmail}` : null;
+}
+
+function getDashboardUpdatedAt(dashboard: DashboardPayload) {
+  return Math.max(
+    dashboard.financialSnapshot ? Date.parse(dashboard.financialSnapshot.capturedAt) : 0,
+    dashboard.housingGoal ? Date.parse(dashboard.housingGoal.capturedAt) : 0,
+  );
+}
+
+function readPersistedFormState(storageKey: string): PersistedFormState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const rawValue = window.localStorage.getItem(storageKey);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as PersistedFormState;
+    if (parsed.version !== 1) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedFormState(storageKey: string, value: PersistedFormState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify(value));
+}
+
+function clearPersistedFormState(storageKey: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(storageKey);
 }
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -136,6 +196,11 @@ export function PlannerShell({
   const [interviewPending, setInterviewPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
+  const storageKey = useMemo(
+    () => getFormStorageKey(sessionEmail || dashboard.household.email || email),
+    [dashboard.household.email, email, sessionEmail],
+  );
 
   useEffect(() => {
     setDashboard(initialDashboard);
@@ -146,9 +211,40 @@ export function PlannerShell({
   }, [sessionEmail]);
 
   useEffect(() => {
-    setFinancialForm(defaultFinancialForm(dashboard.financialSnapshot));
-    setGoalForm(defaultGoalForm(dashboard.housingGoal));
-  }, [dashboard]);
+    const nextFinancialForm = defaultFinancialForm(dashboard.financialSnapshot);
+    const nextGoalForm = defaultGoalForm(dashboard.housingGoal);
+    const persisted = storageKey ? readPersistedFormState(storageKey) : null;
+    const dashboardUpdatedAt = getDashboardUpdatedAt(dashboard);
+    const persistedUpdatedAt = persisted ? Date.parse(persisted.updatedAt) : 0;
+
+    if (persisted && persistedUpdatedAt > dashboardUpdatedAt) {
+      setFinancialForm(persisted.financialForm);
+      setGoalForm(persisted.goalForm);
+      setDraft(persisted.draft);
+      if (persisted.draft) {
+        setCurrentQuestionIndex(interviewQuestions.length);
+      }
+    } else {
+      setFinancialForm(nextFinancialForm);
+      setGoalForm(nextGoalForm);
+    }
+
+    setHydratedStorageKey(storageKey);
+  }, [dashboard, storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || hydratedStorageKey !== storageKey) {
+      return;
+    }
+
+    writePersistedFormState(storageKey, {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      financialForm,
+      goalForm,
+      draft,
+    });
+  }, [draft, financialForm, goalForm, hydratedStorageKey, storageKey]);
 
   const answeredQuestions = useMemo(() => {
     return interviewQuestions.filter((question) => answers[question.id]);
@@ -355,6 +451,9 @@ export function PlannerShell({
         method: "POST",
         body: JSON.stringify({}),
       });
+      if (storageKey) {
+        clearPersistedFormState(storageKey);
+      }
       await refreshDashboard();
       setSaveNotice("계산 결과를 업데이트했습니다. 오른쪽 대시보드를 확인하세요.");
     } catch (saveError) {

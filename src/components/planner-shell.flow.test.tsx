@@ -23,6 +23,7 @@ vi.mock("next/navigation", () => ({
 describe("PlannerShell flow", () => {
   beforeEach(() => {
     mockRefresh.mockReset();
+    window.localStorage.clear();
   });
 
   it("walks through interview, saves the draft, and shows dashboard results", async () => {
@@ -396,5 +397,41 @@ describe("PlannerShell flow", () => {
         }),
       );
     });
+  });
+
+  it("restores structured form values after refresh from local storage", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <PlannerShell
+        initialDashboard={buildDashboardFixture(false)}
+        sessionEmail="hmnr@example.com"
+        authConfigured={false}
+        authMode="demo"
+        authenticated={false}
+      />,
+    );
+
+    const cashInput = screen.getByLabelText("현금성 자산");
+    await user.clear(cashInput);
+    await user.type(cashInput, "210000000");
+
+    const regionInput = screen.getByLabelText("희망 생활권");
+    await user.clear(regionInput);
+    await user.type(regionInput, "광명, 안양");
+
+    unmount();
+
+    render(
+      <PlannerShell
+        initialDashboard={buildDashboardFixture(false)}
+        sessionEmail="hmnr@example.com"
+        authConfigured={false}
+        authMode="demo"
+        authenticated={false}
+      />,
+    );
+
+    expect(screen.getByLabelText("현금성 자산")).toHaveValue(210000000);
+    expect(screen.getByLabelText("희망 생활권")).toHaveValue("광명, 안양");
   });
 });
