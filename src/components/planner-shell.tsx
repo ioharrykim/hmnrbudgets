@@ -261,9 +261,19 @@ export function PlannerShell({
       ? "먼저 Step 1에서 이메일과 4자리 코드로 인증해야 인터뷰 초안을 저장할 수 있습니다."
       : "먼저 Step 1에서 이메일 로그인 링크를 열어 인증해야 인터뷰 초안을 저장할 수 있습니다.";
 
-  async function refreshDashboard() {
+  async function refreshDashboard(fallback?: Partial<DashboardPayload>) {
     const response = await requestJson<{ dashboard: DashboardPayload }>("/api/dashboard");
-    setDashboard(response.dashboard);
+    const mergedDashboard: DashboardPayload = {
+      ...response.dashboard,
+      financialSnapshot: response.dashboard.financialSnapshot ?? fallback?.financialSnapshot ?? null,
+      housingGoal: response.dashboard.housingGoal ?? fallback?.housingGoal ?? null,
+      latestRun: response.dashboard.latestRun ?? fallback?.latestRun ?? null,
+    };
+    setDashboard(mergedDashboard);
+    return {
+      persisted: response.dashboard,
+      merged: mergedDashboard,
+    };
   }
 
   async function handleSessionLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -447,14 +457,36 @@ export function PlannerShell({
         method: "POST",
         body: JSON.stringify(housingGoal),
       });
-      await requestJson("/api/affordability-runs/recompute", {
+      const recomputeResponse = await requestJson<{ run: DashboardPayload["latestRun"] }>("/api/affordability-runs/recompute", {
         method: "POST",
         body: JSON.stringify({}),
       });
+      const localDashboardFallback: Partial<DashboardPayload> = {
+        financialSnapshot,
+        housingGoal,
+        latestRun: recomputeResponse.run,
+      };
+      setDashboard((current) => ({
+        ...current,
+        financialSnapshot,
+        housingGoal,
+        latestRun: recomputeResponse.run,
+      }));
       if (storageKey) {
         clearPersistedFormState(storageKey);
       }
-      await refreshDashboard();
+      const refreshed = await refreshDashboard(localDashboardFallback);
+
+      if (
+        !refreshed.persisted.financialSnapshot ||
+        !refreshed.persisted.housingGoal ||
+        !refreshed.persisted.latestRun
+      ) {
+        setError("계산 결과는 화면에 반영했지만 서버 저장소에서 다시 읽지 못했습니다. Vercel의 SUPABASE_SERVICE_ROLE_KEY를 확인하세요.");
+        setSaveNotice("계산 결과를 임시로 화면에 반영했습니다. 오른쪽 대시보드를 확인하세요.");
+        return;
+      }
+
       setSaveNotice("계산 결과를 업데이트했습니다. 오른쪽 대시보드를 확인하세요.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "계산 실행에 실패했습니다.");

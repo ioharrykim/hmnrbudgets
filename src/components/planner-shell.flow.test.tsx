@@ -165,6 +165,144 @@ describe("PlannerShell flow", () => {
     });
   });
 
+  it("keeps calculated results on screen when dashboard refresh comes back empty and shows a storage warning", async () => {
+    const householdId = "household_fixture";
+    const initialDashboard = buildDashboardFixture(false);
+    const draft = normalizeInterviewAnswers(
+      householdId,
+      interviewQuestions.map((question) => ({
+        questionId: question.id,
+        answer:
+          {
+            hyunminMonthlyNetIncome: "370만원",
+            hyunminMonthlyVariableIncome: "20만원",
+            nuriMonthlyNetIncome: "280만원",
+            nuriMonthlyVariableIncome: "10만원",
+            monthlyFixedExpenses: "290만원",
+            monthlyCurrentHousingCost: "110만원",
+            currentMonthlySavings: "230만원",
+            cashAssets: "1.6억",
+            subscriptionSavings: "1800만원",
+            jeonseReturnAmount: "7000만원",
+            outstandingDebt: "2000만원",
+            otherDebtMonthlyService: "25만원",
+            expectedAnnualBonus: "400만원",
+            preferredRegions: "광명, 마포, 분당",
+            commuteMaxMinutes: "60",
+            targetTimeframeMonths: "48",
+          }[question.id] ?? "",
+      })),
+    );
+
+    const updatedFinancialSnapshot = buildFinancialSnapshotFixture(householdId);
+    const updatedHousingGoal = buildHousingGoalFixture(householdId);
+    const updatedRun = computeAffordabilityRun(
+      householdId,
+      updatedFinancialSnapshot,
+      updatedHousingGoal,
+      basePolicySnapshot,
+      promotedMarketSnapshots,
+      {
+        summary: "광명·안양 기준으로 4년 이내 매수 준비가 가능합니다.",
+        risks: ["보수 시나리오에서는 더 오래 걸릴 수 있습니다.", "서울 핵심권은 추가 자기자금이 필요합니다.", "기존 부채가 일부 여력을 사용합니다."],
+        recommendedActions: ["월 저축액 유지", "전세보증금 반환 시점 점검", "광명·안양 실거래 추적"],
+        followUpQuestions: ["보너스 변동성은 어느 정도인가요?", "생활권을 얼마나 넓힐 수 있나요?"],
+        provider: "template",
+      },
+    );
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ draft }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ snapshot: updatedFinancialSnapshot }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ goal: updatedHousingGoal }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ run: updatedRun }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ dashboard: initialDashboard }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(
+      <PlannerShell
+        initialDashboard={initialDashboard}
+        sessionEmail="hmnr@example.com"
+        authConfigured={false}
+        authMode="demo"
+        authenticated={false}
+      />,
+    );
+
+    for (const question of interviewQuestions) {
+      const value =
+        {
+          hyunminMonthlyNetIncome: "370만원",
+          hyunminMonthlyVariableIncome: "20만원",
+          nuriMonthlyNetIncome: "280만원",
+          nuriMonthlyVariableIncome: "10만원",
+          monthlyFixedExpenses: "290만원",
+          monthlyCurrentHousingCost: "110만원",
+          currentMonthlySavings: "230만원",
+          cashAssets: "1.6억",
+          subscriptionSavings: "1800만원",
+          jeonseReturnAmount: "7000만원",
+          outstandingDebt: "2000만원",
+          otherDebtMonthlyService: "25만원",
+          expectedAnnualBonus: "400만원",
+          preferredRegions: "광명, 마포, 분당",
+          commuteMaxMinutes: "60",
+          targetTimeframeMonths: "48",
+        }[question.id] ?? "";
+      const input = screen.getByPlaceholderText(question.placeholder);
+      await user.type(input, value);
+      await user.click(
+        screen.getByRole("button", {
+          name: question.id === "targetTimeframeMonths" ? "구조화 초안 만들기" : "다음 질문",
+        }),
+      );
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("인터뷰 초안이 준비되었습니다. 아래 폼에서 숫자를 수정하세요.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "저장하고 매수 가능 시점 계산" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI 요약/)).toBeInTheDocument();
+      expect(
+        screen.getByText("계산 결과는 화면에 반영했지만 서버 저장소에서 다시 읽지 못했습니다. Vercel의 SUPABASE_SERVICE_ROLE_KEY를 확인하세요."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("계산 결과를 임시로 화면에 반영했습니다. 오른쪽 대시보드를 확인하세요."),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("blocks interview submission until Supabase auth is complete", () => {
     render(
       <PlannerShell
