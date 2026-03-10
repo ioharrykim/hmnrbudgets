@@ -152,11 +152,62 @@ function mapHousingGoal(record: Record<string, unknown>): HousingGoal {
   };
 }
 
+function toPolicySnapshotRecord(policy: PolicySnapshot) {
+  return {
+    id: policy.id,
+    basis_date: policy.basisDate,
+    published_date: policy.publishedDate,
+    review_status: policy.reviewStatus,
+    general_dsr_limit: policy.generalDsrLimit,
+    capital_area_stress_dsr_rate: policy.capitalAreaStressDsrRate,
+    non_capital_stress_dsr_rate: policy.nonCapitalStressDsrRate,
+    assumed_general_mortgage_rate: policy.assumedGeneralMortgageRate,
+    closing_cost_rate: policy.closingCostRate,
+    bogeumjari: policy.bogeumjari,
+    didimdol: policy.didimdol,
+    sources: policy.sources,
+  };
+}
+
+function toMarketSnapshotRecord(market: MarketSnapshot) {
+  return {
+    id: market.id,
+    slug: market.slug,
+    region_name: market.regionName,
+    lifestyle_label: market.lifestyleLabel,
+    published_month: market.publishedMonth,
+    review_status: market.reviewStatus,
+    freshness: market.freshness,
+    price_band_low: market.priceBandLow,
+    price_band_mid: market.priceBandMid,
+    price_band_high: market.priceBandHigh,
+    mom_change_pct: market.momChangePct,
+    yoy_change_pct: market.yoyChangePct,
+    commute_label: market.commuteLabel,
+    notes: market.notes,
+    source_records: market.sourceRecords,
+  };
+}
+
 export class SupabaseRepository implements PersistenceRepository {
   private client: SupabaseClient;
 
   constructor() {
     this.client = createSupabaseAdminClient();
+  }
+
+  private async ensureSeedPolicySnapshot() {
+    const { error } = await this.client.from("policy_snapshots").upsert(toPolicySnapshotRecord(basePolicySnapshot));
+    formatSupabaseErrorMessage("기본 policy snapshot 시드 저장", error);
+    return basePolicySnapshot;
+  }
+
+  private async ensureSeedMarketSnapshots() {
+    const { error } = await this.client
+      .from("market_snapshots")
+      .upsert(promotedMarketSnapshots.map((market) => toMarketSnapshotRecord(market)));
+    formatSupabaseErrorMessage("기본 market snapshot 시드 저장", error);
+    return promotedMarketSnapshots;
   }
 
   async getOrCreateHouseholdByEmail(email: string, authUserId?: string) {
@@ -324,6 +375,10 @@ export class SupabaseRepository implements PersistenceRepository {
   }
 
   async saveAffordabilityRun(run: AffordabilityRun) {
+    if (run.policySnapshotId === basePolicySnapshot.id) {
+      await this.ensureSeedPolicySnapshot();
+    }
+
     const { error } = await this.client.from("affordability_runs").upsert({
       id: run.id,
       household_id: run.householdId,
@@ -357,7 +412,7 @@ export class SupabaseRepository implements PersistenceRepository {
       .maybeSingle();
     formatSupabaseErrorMessage("policy snapshot 조회", error);
 
-    return data ? mapPolicySnapshot(data) : basePolicySnapshot;
+    return data ? mapPolicySnapshot(data) : this.ensureSeedPolicySnapshot();
   }
 
   async getPromotedMarketSnapshots() {
@@ -368,7 +423,7 @@ export class SupabaseRepository implements PersistenceRepository {
       .order("price_band_mid", { ascending: true });
     formatSupabaseErrorMessage("market snapshot 조회", error);
 
-    return data && data.length > 0 ? data.map((record) => mapMarketSnapshot(record)) : promotedMarketSnapshots;
+    return data && data.length > 0 ? data.map((record) => mapMarketSnapshot(record)) : this.ensureSeedMarketSnapshots();
   }
 
   async refreshSnapshots() {
@@ -403,45 +458,18 @@ export class SupabaseRepository implements PersistenceRepository {
       }
     }
 
-    await this.client.from("policy_snapshots").upsert({
-      id: policy.id,
-      basis_date: policy.basisDate,
-      published_date: policy.publishedDate,
-      review_status: policy.reviewStatus,
-      general_dsr_limit: policy.generalDsrLimit,
-      capital_area_stress_dsr_rate: policy.capitalAreaStressDsrRate,
-      non_capital_stress_dsr_rate: policy.nonCapitalStressDsrRate,
-      assumed_general_mortgage_rate: policy.assumedGeneralMortgageRate,
-      closing_cost_rate: policy.closingCostRate,
-      bogeumjari: policy.bogeumjari,
-      didimdol: policy.didimdol,
-      sources: policy.sources,
-    });
+    const { error: policyError } = await this.client.from("policy_snapshots").upsert(toPolicySnapshotRecord(policy));
+    formatSupabaseErrorMessage("policy snapshot refresh 저장", policyError);
 
     if (markets.length > 0) {
-      await this.client.from("market_snapshots").upsert(
-        markets.map((market) => ({
-          id: market.id,
-          slug: market.slug,
-          region_name: market.regionName,
-          lifestyle_label: market.lifestyleLabel,
-          published_month: market.publishedMonth,
-          review_status: market.reviewStatus,
-          freshness: market.freshness,
-          price_band_low: market.priceBandLow,
-          price_band_mid: market.priceBandMid,
-          price_band_high: market.priceBandHigh,
-          mom_change_pct: market.momChangePct,
-          yoy_change_pct: market.yoyChangePct,
-          commute_label: market.commuteLabel,
-          notes: market.notes,
-          source_records: market.sourceRecords,
-        })),
-      );
+      const { error: marketError } = await this.client
+        .from("market_snapshots")
+        .upsert(markets.map((market) => toMarketSnapshotRecord(market)));
+      formatSupabaseErrorMessage("market snapshot refresh 저장", marketError);
     }
 
     if (reviews.length > 0) {
-      await this.client.from("refresh_reviews").upsert(
+      const { error: reviewError } = await this.client.from("refresh_reviews").upsert(
         reviews.map((review) => ({
           id: review.id,
           source_record_id: review.sourceRecordId,
@@ -453,6 +481,7 @@ export class SupabaseRepository implements PersistenceRepository {
           notes: review.notes ?? null,
         })),
       );
+      formatSupabaseErrorMessage("refresh review 저장", reviewError);
     }
 
     return {
@@ -473,41 +502,16 @@ export class SupabaseRepository implements PersistenceRepository {
       reviewStatus: "promoted" as const,
     }));
 
-    await this.client.from("policy_snapshots").upsert({
-      id: promotedPolicy.id,
-      basis_date: promotedPolicy.basisDate,
-      published_date: promotedPolicy.publishedDate,
-      review_status: promotedPolicy.reviewStatus,
-      general_dsr_limit: promotedPolicy.generalDsrLimit,
-      capital_area_stress_dsr_rate: promotedPolicy.capitalAreaStressDsrRate,
-      non_capital_stress_dsr_rate: promotedPolicy.nonCapitalStressDsrRate,
-      assumed_general_mortgage_rate: promotedPolicy.assumedGeneralMortgageRate,
-      closing_cost_rate: promotedPolicy.closingCostRate,
-      bogeumjari: promotedPolicy.bogeumjari,
-      didimdol: promotedPolicy.didimdol,
-      sources: promotedPolicy.sources,
-    });
+    const { error: promotedPolicyError } = await this.client
+      .from("policy_snapshots")
+      .upsert(toPolicySnapshotRecord(promotedPolicy));
+    formatSupabaseErrorMessage("promoted policy snapshot 저장", promotedPolicyError);
 
     if (promotedMarkets.length > 0) {
-      await this.client.from("market_snapshots").upsert(
-        promotedMarkets.map((market) => ({
-          id: market.id,
-          slug: market.slug,
-          region_name: market.regionName,
-          lifestyle_label: market.lifestyleLabel,
-          published_month: market.publishedMonth,
-          review_status: market.reviewStatus,
-          freshness: market.freshness,
-          price_band_low: market.priceBandLow,
-          price_band_mid: market.priceBandMid,
-          price_band_high: market.priceBandHigh,
-          mom_change_pct: market.momChangePct,
-          yoy_change_pct: market.yoyChangePct,
-          commute_label: market.commuteLabel,
-          notes: market.notes,
-          source_records: market.sourceRecords,
-        })),
-      );
+      const { error: promotedMarketError } = await this.client
+        .from("market_snapshots")
+        .upsert(promotedMarkets.map((market) => toMarketSnapshotRecord(market)));
+      formatSupabaseErrorMessage("promoted market snapshot 저장", promotedMarketError);
     }
 
     return {
